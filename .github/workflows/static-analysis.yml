@@ -1,0 +1,48 @@
+name: Static Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format
+      - name: Check formatting
+        run: ./scripts/format.sh --check
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build clang clang-tidy
+      - name: Configure
+        run: cmake --preset debug -DProjectAgamemnon_ENABLE_CLANG_TIDY=ON
+      - name: Build (triggers clang-tidy)
+        run: cmake --build --preset debug
+
+  check-all:
+    name: All Static Analysis Checks
+    runs-on: ubuntu-24.04
+    needs: [clang-format, clang-tidy]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        env:
+          CLANG_FORMAT_RESULT: ${{ needs.clang-format.result }}
+          CLANG_TIDY_RESULT: ${{ needs.clang-tidy.result }}
+        run: |
+          if [ "$CLANG_FORMAT_RESULT" != "success" ] || \
+             [ "$CLANG_TIDY_RESULT" != "success" ]; then
+            echo "Static analysis failed"
+            exit 1
+          fi
+          echo "All checks passed"

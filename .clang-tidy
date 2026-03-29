@@ -1,0 +1,17 @@
+---
+Checks: >
+  *,
+  -fuchsia-*,
+  -llvm-*,
+  -google-readability-todo,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -modernize-use-trailing-return-type,
+  -altera-*,
+  -cert-err58-cpp,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -hicpp-no-array-decay
+WarningsAsErrors: ''
+HeaderFilterRegex: '(include|src|test)/'
+FormatStyle: file
+...

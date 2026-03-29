@@ -1,0 +1,45 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build gcovr
+      - name: Configure
+        run: cmake --preset coverage
+      - name: Build
+        run: cmake --build --preset coverage
+      - name: Test
+        run: ctest --preset coverage
+      - name: Generate coverage report
+        run: ./scripts/coverage.sh
+      - name: Check threshold
+        run: |
+          LINE_COV=$(gcovr --print-summary 2>/dev/null | grep "lines:" | grep -oP '\d+\.\d+' | head -1)
+          echo "Line coverage: ${LINE_COV}%"
+          python3 -c "import sys; cov=float('${LINE_COV}'); sys.exit(0 if cov >= 80 else 1)"
+
+  check-all:
+    name: All Coverage Checks
+    runs-on: ubuntu-24.04
+    needs: [coverage]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        env:
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
+        run: |
+          if [ "$COVERAGE_RESULT" != "success" ]; then
+            echo "Coverage check failed"
+            exit 1
+          fi
+          echo "All checks passed"

@@ -1,0 +1,17 @@
+---
+BasedOnStyle: Google
+Standard: c++20
+IndentWidth: 2
+ColumnLimit: 100
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"projectagamemnon/'
+    Priority: 1
+  - Regex: '^<(gtest|gmock)/'
+    Priority: 3
+  - Regex: '^<'
+    Priority: 2
+...

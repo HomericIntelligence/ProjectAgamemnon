@@ -1,0 +1,13 @@
+build/
+install/
+.cache/
+*.o
+*.a
+*.so
+*.dylib
+compile_commands.json
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
