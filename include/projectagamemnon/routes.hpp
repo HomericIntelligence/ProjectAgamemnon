@@ -1,11 +1,16 @@
 #pragma once
 
-#include "httplib.h"
+// Forward declarations to avoid pulling in heavy headers here.
+namespace httplib { class Server; }
 
 namespace projectagamemnon {
 
-/// Register all HTTP route handlers onto the server.
-/// Routes return stub JSON responses with TODO markers for real implementation.
-void register_routes(httplib::Server& server);
+class Store;
+class NatsClient;
+
+/// Register all /v1/ route handlers on the given server.
+/// Both Store and NatsClient are passed by reference; they must outlive the
+/// server (they are owned by main).
+void register_routes(httplib::Server& server, Store& store, NatsClient& nats);
 
 }  // namespace projectagamemnon
