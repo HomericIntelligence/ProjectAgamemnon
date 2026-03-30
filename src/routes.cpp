@@ -58,6 +58,10 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     reply_json(res, 200, {{"status", "ok"}, {"service", "ProjectAgamemnon"}});
   });
 
+  server.Get("/v1/health", [](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, {{"status", "ok"}});
+  });
+
   server.Get("/v1/version", [](const httplib::Request&, httplib::Response& res) {
     reply_json(res, 200, {{"version", "0.1.0"}, {"name", "ProjectAgamemnon"}});
   });
