@@ -200,6 +200,22 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       if (!parse_body(req, res, body)) return;
       json result = sp->create_task(team_id, body);
       np->publish("hi.tasks.created", result.dump());
+
+      // Dispatch to myrmidon work queue: hi.myrmidon.{type}.{task_id}
+      const auto& task = result["task"];
+      std::string task_type = task.value("type", "general");
+      std::string task_id = task.value("id", "unknown");
+      std::string myrmidon_subject = "hi.myrmidon." + task_type + "." + task_id;
+      json myrmidon_payload = {
+        {"task_id", task_id},
+        {"team_id", team_id},
+        {"subject", task.value("subject", "")},
+        {"description", task.value("description", "")},
+        {"type", task_type},
+        {"assignee", task.value("assigneeAgentId", "")}
+      };
+      np->publish(myrmidon_subject, myrmidon_payload.dump());
+
       reply_json(res, 201, result);
     });
 
