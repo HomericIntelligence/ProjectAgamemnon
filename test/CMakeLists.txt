@@ -7,7 +7,7 @@ FetchContent_Declare(
   GIT_TAG v1.14.0)
 FetchContent_MakeAvailable(googletest)
 
-add_executable(${PROJECT_NAME}_tests test/src/test_main.cpp)
+add_executable(${PROJECT_NAME}_tests src/test_main.cpp)
 
 target_compile_features(${PROJECT_NAME}_tests PRIVATE cxx_std_20)
 set_target_properties(${PROJECT_NAME}_tests PROPERTIES CXX_EXTENSIONS OFF)
