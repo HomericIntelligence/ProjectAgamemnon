@@ -1,234 +1,253 @@
-// ProjectAgamemnon route handlers — C++20 skeleton
-// Each handler returns the correct JSON shape with hardcoded/stub data.
-// TODO markers indicate where real business logic should be implemented.
-
 #include "projectagamemnon/routes.hpp"
 
-#include <string>
+#include "projectagamemnon/nats_client.hpp"
+#include "projectagamemnon/store.hpp"
+
+// cpp-httplib — single-header, no SSL needed for internal mesh traffic
+#define CPPHTTPLIB_NO_EXCEPTIONS
 #include "httplib.h"
+
 #include "nlohmann/json.hpp"
+
+#include <iostream>
+#include <string>
 
 namespace projectagamemnon {
 
 using json = nlohmann::json;
 
-void register_routes(httplib::Server& server) {
-  // ── Health ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  server.Get("/v1/health", [](const httplib::Request& /*req*/, httplib::Response& res) {
-    // TODO: check internal service health
-    res.set_content(json{{"status", "ok"}}.dump(), "application/json");
+static void reply_json(httplib::Response& res, int status, const json& body) {
+  res.status = status;
+  res.set_content(body.dump(), "application/json");
+}
+
+static void reply_not_found(httplib::Response& res, const std::string& what) {
+  reply_json(res, 404, {{"error", what + " not found"}});
+}
+
+static void reply_bad_request(httplib::Response& res, const std::string& msg) {
+  reply_json(res, 400, {{"error", msg}});
+}
+
+/// Parse JSON body; returns false and sets 400 on parse error.
+static bool parse_body(const httplib::Request& req, httplib::Response& res, json& out) {
+  if (req.body.empty()) { out = json::object(); return true; }
+  try {
+    out = json::parse(req.body);
+    return true;
+  } catch (const json::parse_error& e) {
+    reply_bad_request(res, std::string("invalid JSON: ") + e.what());
+    return false;
+  }
+}
+
+// ── Route registration ────────────────────────────────────────────────────────
+
+// NOTE: We capture Store* and NatsClient* (raw pointers, not references) to
+// avoid dangling-reference UB when the lambda outlives register_routes' stack.
+// Both store and nats are owned by main() and outlive the server.
+
+void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
+  Store*       sp = &store;
+  NatsClient*  np = &nats;
+
+  // ── Health / version ────────────────────────────────────────────────────
+  server.Get("/health", [](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, {{"status", "ok"}, {"service", "ProjectAgamemnon"}});
   });
 
-  // ── Agents ───────────────────────────────────────────────────────────────
-
-  server.Get("/v1/agents", [](const httplib::Request& /*req*/, httplib::Response& res) {
-    // TODO: return agents from backing store (GitHub Issues/Projects)
-    res.set_content(json{{"agents", json::array()}}.dump(), "application/json");
+  server.Get("/v1/version", [](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, {{"version", "0.1.0"}, {"name", "ProjectAgamemnon"}});
   });
 
-  server.Get("/v1/agents/by-name/(.*)",
-             [](const httplib::Request& req, httplib::Response& res) {
-               // TODO: look up agent by name in backing store
-               const std::string name = req.matches[1];
-               res.status = 404;
-               res.set_content(json{{"detail", "Agent not found: " + name}}.dump(),
-                               "application/json");
-             });
+  // ── Agents ──────────────────────────────────────────────────────────────
 
-  server.Get("/v1/agents/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: look up agent by ID in backing store
-    const std::string agent_id = req.matches[1];
-    res.status = 404;
-    res.set_content(json{{"detail", "Agent not found: " + agent_id}}.dump(), "application/json");
+  // GET /v1/agents
+  server.Get("/v1/agents", [sp](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, sp->list_agents());
   });
 
-  server.Post("/v1/agents/docker",
-              [](const httplib::Request& req, httplib::Response& res) {
-                // TODO: provision docker agent via Nomad/Podman
-                const auto body = json::parse(req.body, nullptr, false);
-                if (body.is_discarded()) {
-                  res.status = 400;
-                  res.set_content(json{{"detail", "Invalid JSON"}}.dump(), "application/json");
-                  return;
-                }
-                res.status = 501;
-                res.set_content(
-                    json{{"detail", "Docker agent provisioning not yet implemented"}}.dump(),
-                    "application/json");
-              });
-
-  server.Post("/v1/agents", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: create agent in backing store (GitHub Issue), publish to NATS
-    const auto body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded()) {
-      res.status = 400;
-      res.set_content(json{{"detail", "Invalid JSON"}}.dump(), "application/json");
-      return;
-    }
-    res.status = 501;
-    res.set_content(json{{"detail", "Agent creation not yet implemented"}}.dump(),
-                    "application/json");
+  // POST /v1/agents
+  server.Post("/v1/agents", [sp, np](const httplib::Request& req, httplib::Response& res) {
+    json body;
+    if (!parse_body(req, res, body)) return;
+    json result = sp->create_agent(body);
+    np->publish("hi.agents.created", result.dump());
+    reply_json(res, 201, result);
   });
 
-  server.Patch("/v1/agents/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: update agent fields in backing store
-    const std::string agent_id = req.matches[1];
-    res.status = 501;
-    res.set_content(json{{"detail", "PATCH not yet implemented for: " + agent_id}}.dump(),
-                    "application/json");
-  });
+  // POST /v1/agents/:id/start  — registered BEFORE the generic :id route
+  server.Post(R"(/v1/agents/([^/]+)/start)",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json result = sp->start_agent(id);
+      if (result.is_null()) { reply_not_found(res, "agent"); return; }
+      np->publish("hi.agents.started", result.dump());
+      reply_json(res, 200, result);
+    });
 
-  server.Delete("/v1/agents/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: delete agent from backing store, publish to NATS
-    const std::string agent_id = req.matches[1];
-    res.status = 501;
-    res.set_content(json{{"detail", "DELETE not yet implemented for: " + agent_id}}.dump(),
-                    "application/json");
-  });
+  // POST /v1/agents/:id/stop
+  server.Post(R"(/v1/agents/([^/]+)/stop)",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json result = sp->stop_agent(id);
+      if (result.is_null()) { reply_not_found(res, "agent"); return; }
+      np->publish("hi.agents.stopped", result.dump());
+      reply_json(res, 200, result);
+    });
 
-  server.Post("/v1/agents/(.*)/start",
-              [](const httplib::Request& req, httplib::Response& res) {
-                // TODO: wake agent (start tmux session or docker container)
-                const std::string agent_id = req.matches[1];
-                res.status = 501;
-                res.set_content(
-                    json{{"detail", "Agent start not yet implemented: " + agent_id}}.dump(),
-                    "application/json");
-              });
+  // GET /v1/agents/:id
+  server.Get(R"(/v1/agents/([^/]+))",
+    [sp](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json agent = sp->get_agent(id);
+      if (agent.is_null()) { reply_not_found(res, "agent"); return; }
+      reply_json(res, 200, {{"agent", agent}});
+    });
 
-  server.Post("/v1/agents/(.*)/stop",
-              [](const httplib::Request& req, httplib::Response& res) {
-                // TODO: hibernate agent
-                const std::string agent_id = req.matches[1];
-                res.status = 501;
-                res.set_content(
-                    json{{"detail", "Agent stop not yet implemented: " + agent_id}}.dump(),
-                    "application/json");
-              });
+  // PATCH /v1/agents/:id
+  server.Patch(R"(/v1/agents/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json body;
+      if (!parse_body(req, res, body)) return;
+      json result = sp->update_agent(id, body);
+      if (result.is_null()) { reply_not_found(res, "agent"); return; }
+      np->publish("hi.agents.updated", result.dump());
+      reply_json(res, 200, {{"agent", result}});
+    });
+
+  // DELETE /v1/agents/:id
+  server.Delete(R"(/v1/agents/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      if (!sp->delete_agent(id)) { reply_not_found(res, "agent"); return; }
+      np->publish("hi.agents.deleted", json{{"id", id}}.dump());
+      reply_json(res, 200, {{"deleted", id}});
+    });
 
   // ── Teams ────────────────────────────────────────────────────────────────
 
-  server.Post("/v1/teams", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: create team in backing store
-    const auto body = json::parse(req.body, nullptr, false);
-    if (body.is_discarded()) {
-      res.status = 400;
-      res.set_content(json{{"detail", "Invalid JSON"}}.dump(), "application/json");
-      return;
-    }
-    res.status = 501;
-    res.set_content(json{{"detail", "Team creation not yet implemented"}}.dump(),
-                    "application/json");
+  // GET /v1/teams
+  server.Get("/v1/teams", [sp](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, sp->list_teams());
   });
 
-  server.Put("/v1/teams/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: update team members
-    const std::string team_id = req.matches[1];
-    res.status = 501;
-    res.set_content(json{{"detail", "Team update not yet implemented: " + team_id}}.dump(),
-                    "application/json");
+  // POST /v1/teams
+  server.Post("/v1/teams", [sp, np](const httplib::Request& req, httplib::Response& res) {
+    json body;
+    if (!parse_body(req, res, body)) return;
+    json result = sp->create_team(body);
+    np->publish("hi.agents.team.created", result.dump());
+    reply_json(res, 201, result);
   });
 
-  server.Delete("/v1/teams/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: delete team
-    const std::string team_id = req.matches[1];
-    res.status = 501;
-    res.set_content(json{{"detail", "Team delete not yet implemented: " + team_id}}.dump(),
-                    "application/json");
+  // GET /v1/teams/:id
+  server.Get(R"(/v1/teams/([^/]+))",
+    [sp](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json team = sp->get_team(id);
+      if (team.is_null()) { reply_not_found(res, "team"); return; }
+      reply_json(res, 200, {{"team", team}});
+    });
+
+  // PUT /v1/teams/:id
+  server.Put(R"(/v1/teams/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      json body;
+      if (!parse_body(req, res, body)) return;
+      json result = sp->update_team(id, body);
+      if (result.is_null()) { reply_not_found(res, "team"); return; }
+      np->publish("hi.agents.team.updated", result.dump());
+      reply_json(res, 200, {{"team", result}});
+    });
+
+  // DELETE /v1/teams/:id
+  server.Delete(R"(/v1/teams/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      if (!sp->delete_team(id)) { reply_not_found(res, "team"); return; }
+      np->publish("hi.agents.team.deleted", json{{"id", id}}.dump());
+      reply_json(res, 200, {{"deleted", id}});
+    });
+
+  // ── Tasks ────────────────────────────────────────────────────────────────
+
+  // GET /v1/tasks  (all tasks across all teams)
+  server.Get("/v1/tasks", [sp](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, sp->list_all_tasks());
   });
 
-  server.Post("/v1/teams/(.*)/tasks",
-              [](const httplib::Request& req, httplib::Response& res) {
-                // TODO: create task in backing store (GitHub Issue), dispatch to NATS myrmidon queue
-                const std::string team_id = req.matches[1];
-                const auto body = json::parse(req.body, nullptr, false);
-                if (body.is_discarded()) {
-                  res.status = 400;
-                  res.set_content(json{{"detail", "Invalid JSON"}}.dump(), "application/json");
-                  return;
-                }
-                res.status = 501;
-                res.set_content(
-                    json{{"detail", "Task creation not yet implemented for team: " + team_id}}
-                        .dump(),
-                    "application/json");
-              });
+  // GET /v1/teams/:team_id/tasks — registered BEFORE the generic :team_id route
+  server.Get(R"(/v1/teams/([^/]+)/tasks)",
+    [sp](const httplib::Request& req, httplib::Response& res) {
+      std::string team_id = req.matches[1];
+      reply_json(res, 200, sp->list_tasks_for_team(team_id));
+    });
 
-  server.Put("/v1/teams/(.*)/tasks/(.*)",
-             [](const httplib::Request& req, httplib::Response& res) {
-               // TODO: update task status
-               const std::string team_id = req.matches[1];
-               const std::string task_id = req.matches[2];
-               res.status = 501;
-               res.set_content(
-                   json{{"detail",
-                         "Task update not yet implemented: " + team_id + "/" + task_id}}
-                       .dump(),
-                   "application/json");
-             });
+  // POST /v1/teams/:team_id/tasks
+  server.Post(R"(/v1/teams/([^/]+)/tasks)",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string team_id = req.matches[1];
+      json body;
+      if (!parse_body(req, res, body)) return;
+      json result = sp->create_task(team_id, body);
+      np->publish("hi.tasks.created", result.dump());
+      reply_json(res, 201, result);
+    });
 
-  server.Get("/v1/teams/(.*)/tasks",
-             [](const httplib::Request& req, httplib::Response& res) {
-               // TODO: list tasks for team from backing store
-               res.set_content(json{{"tasks", json::array()}}.dump(), "application/json");
-             });
+  // GET /v1/teams/:team_id/tasks/:task_id
+  server.Get(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
+    [sp](const httplib::Request& req, httplib::Response& res) {
+      std::string team_id = req.matches[1];
+      std::string task_id = req.matches[2];
+      json task = sp->get_task(team_id, task_id);
+      if (task.is_null()) { reply_not_found(res, "task"); return; }
+      reply_json(res, 200, {{"task", task}});
+    });
 
-  // ── Tasks (global) ───────────────────────────────────────────────────────
+  // PATCH /v1/teams/:team_id/tasks/:task_id
+  server.Patch(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string team_id = req.matches[1];
+      std::string task_id = req.matches[2];
+      json body;
+      if (!parse_body(req, res, body)) return;
+      json result = sp->update_task(team_id, task_id, body);
+      if (result.is_null()) { reply_not_found(res, "task"); return; }
+      np->publish("hi.tasks.updated", result.dump());
+      reply_json(res, 200, {{"task", result}});
+    });
 
-  server.Get("/v1/tasks", [](const httplib::Request& /*req*/, httplib::Response& res) {
-    // TODO: list all tasks from backing store
-    res.set_content(json{{"tasks", json::array()}}.dump(), "application/json");
+  // ── Chaos ────────────────────────────────────────────────────────────────
+
+  // GET /v1/chaos
+  server.Get("/v1/chaos", [sp](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, sp->list_faults());
   });
 
-  // ── Workflows ────────────────────────────────────────────────────────────
+  // POST /v1/chaos/:type
+  server.Post(R"(/v1/chaos/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string type = req.matches[1];
+      json result = sp->create_fault(type);
+      np->publish("hi.agents.chaos.injected", result.dump());
+      reply_json(res, 201, result);
+    });
 
-  server.Get("/v1/workflows", [](const httplib::Request& /*req*/, httplib::Response& res) {
-    // TODO: list active workflows
-    res.set_content(json{{"workflows", json::array()}}.dump(), "application/json");
-  });
+  // DELETE /v1/chaos/:id
+  server.Delete(R"(/v1/chaos/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string id = req.matches[1];
+      if (!sp->remove_fault(id)) { reply_not_found(res, "fault"); return; }
+      np->publish("hi.agents.chaos.removed", json{{"id", id}}.dump());
+      reply_json(res, 200, {{"deleted", id}});
+    });
 
-  // ── Chaos (ProjectCharybdis integration) ─────────────────────────────────
-
-  server.Post("/v1/chaos/network-partition",
-              [](const httplib::Request& /*req*/, httplib::Response& res) {
-                // TODO: inject Tailscale network partition
-                res.set_content(
-                    json{{"id", "fault-stub"}, {"type", "network-partition"}, {"status", "active"}}
-                        .dump(),
-                    "application/json");
-              });
-
-  server.Post("/v1/chaos/latency",
-              [](const httplib::Request& /*req*/, httplib::Response& res) {
-                // TODO: inject network latency via tc netem
-                res.set_content(
-                    json{{"id", "fault-stub"}, {"type", "latency"}, {"status", "active"}}.dump(),
-                    "application/json");
-              });
-
-  server.Post("/v1/chaos/kill",
-              [](const httplib::Request& /*req*/, httplib::Response& res) {
-                // TODO: kill named service via Nomad/systemd
-                res.set_content(
-                    json{{"id", "fault-stub"}, {"type", "kill"}, {"status", "active"}}.dump(),
-                    "application/json");
-              });
-
-  server.Post("/v1/chaos/queue-starve",
-              [](const httplib::Request& /*req*/, httplib::Response& res) {
-                // TODO: stall NATS pull consumers
-                res.set_content(
-                    json{{"id", "fault-stub"}, {"type", "queue-starve"}, {"status", "active"}}
-                        .dump(),
-                    "application/json");
-              });
-
-  server.Delete("/v1/chaos/(.*)", [](const httplib::Request& req, httplib::Response& res) {
-    // TODO: remove injected fault
-    const std::string fault_id = req.matches[1];
-    res.set_content(json{{"status", "removed"}, {"id", fault_id}}.dump(), "application/json");
-  });
+  std::cout << "[agamemnon] routes registered\n";
 }
 
 }  // namespace projectagamemnon

@@ -1,50 +1,58 @@
-// ProjectAgamemnon HTTP Server — C++20 skeleton
-// Real business logic is TODO; this binary compiles and serves stub responses.
-// The Python stub in stub/server.py is used for E2E testing until this is complete.
+#include "projectagamemnon/nats_client.hpp"
+#include "projectagamemnon/routes.hpp"
+#include "projectagamemnon/store.hpp"
+#include "projectagamemnon/version.hpp"
 
-#include <csignal>
+#define CPPHTTPLIB_NO_EXCEPTIONS
+#include "httplib.h"
+
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
-#include "httplib.h"
-#include "projectagamemnon/routes.hpp"
-#include "projectagamemnon/version.hpp"
-
-namespace {
-httplib::Server* g_server = nullptr;
-
-void signal_handler(int /*signal*/) {
-  std::cout << "\nShutting down ProjectAgamemnon...\n";
-  if (g_server != nullptr) {
-    g_server->stop();
-  }
-}
-}  // namespace
-
 int main() {
-  const std::string host = "0.0.0.0";
-  const int port = []() -> int {
-    const char* env = std::getenv("AGAMEMNON_PORT");
-    return env != nullptr ? std::stoi(env) : 8080;
-  }();
+  std::cout << projectagamemnon::kProjectName << " v"
+            << projectagamemnon::kVersion << " starting...\n";
 
-  std::cout << projectagamemnon::kProjectName << " v" << projectagamemnon::kVersion << "\n";
-  std::cout << "Starting HTTP server on " << host << ":" << port << "\n";
+  // ── In-memory store ──────────────────────────────────────────────────────
+  projectagamemnon::Store store;
 
-  httplib::Server server;
-  g_server = &server;
+  // ── NATS client ──────────────────────────────────────────────────────────
+  const char* nats_url_env = std::getenv("NATS_URL");
+  std::string nats_url     = nats_url_env ? nats_url_env : "nats://localhost:4222";
 
-  std::signal(SIGINT, signal_handler);
-  std::signal(SIGTERM, signal_handler);
+  projectagamemnon::NatsClient nats(nats_url);
+  if (nats.connect()) {
+    std::cout << "[agamemnon] connected to NATS at " << nats_url << "\n";
+    nats.ensure_streams();
 
-  projectagamemnon::register_routes(server);
-
-  std::cout << "Routes registered. Listening...\n";
-  if (!server.listen(host, port)) {
-    std::cerr << "Failed to start server on port " << port << "\n";
-    return 1;
+    // Subscribe to task-completion events published by myrmidons.
+    nats.subscribe("hi.tasks.completed", [&store](const std::string& /*subject*/,
+                                                   const std::string& data) {
+      try {
+        auto msg = nlohmann::json::parse(data);
+        if (msg.contains("taskId") && msg["taskId"].is_string()) {
+          store.mark_task_completed(msg["taskId"].get<std::string>());
+          std::cout << "[agamemnon] task completed: " << msg["taskId"] << "\n";
+        }
+      } catch (...) {
+        // Ignore malformed payloads.
+      }
+    });
+  } else {
+    std::cerr << "[agamemnon] WARNING: running without NATS — events will be skipped\n";
   }
 
+  // ── HTTP server ───────────────────────────────────────────────────────────
+  httplib::Server server;
+  projectagamemnon::register_routes(server, store, nats);
+
+  const char* port_env = std::getenv("PORT");
+  int port = port_env ? std::stoi(port_env) : 8080;
+
+  std::cout << "[agamemnon] listening on 0.0.0.0:" << port << "\n";
+  server.listen("0.0.0.0", port);
+
+  nats.close();
   return 0;
 }
