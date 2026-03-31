@@ -41,9 +41,9 @@ class NatsClient {
 
  private:
   std::string url_;
-  void*       conn_      = nullptr;  // natsConnection*  (opaque to avoid header leak)
-  void*       js_        = nullptr;  // jsCtx*
-  bool        connected_ = false;
+  void* conn_ = nullptr;  // natsConnection*  (opaque to avoid header leak)
+  void* js_ = nullptr;    // jsCtx*
+  bool connected_ = false;
 };
 
 }  // namespace projectagamemnon

@@ -4,26 +4,26 @@
 #include "projectagamemnon/version.hpp"
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
-#include "httplib.h"
-
 #include <cstdlib>
 #include <iostream>
 #include <string>
+
+#include "httplib.h"
 
 int main() {
   // Disable stdout buffering for container logging
   std::cout.setf(std::ios::unitbuf);
   std::cerr.setf(std::ios::unitbuf);
 
-  std::cout << projectagamemnon::kProjectName << " v"
-            << projectagamemnon::kVersion << " starting...\n";
+  std::cout << projectagamemnon::kProjectName << " v" << projectagamemnon::kVersion
+            << " starting...\n";
 
   // ── In-memory store ──────────────────────────────────────────────────────
   projectagamemnon::Store store;
 
   // ── NATS client ──────────────────────────────────────────────────────────
   const char* nats_url_env = std::getenv("NATS_URL");
-  std::string nats_url     = nats_url_env ? nats_url_env : "nats://localhost:4222";
+  std::string nats_url = nats_url_env ? nats_url_env : "nats://localhost:4222";
 
   projectagamemnon::NatsClient nats(nats_url);
   if (nats.connect()) {
@@ -32,25 +32,25 @@ int main() {
 
     // Subscribe to task-completion events published by myrmidons.
     // Myrmidons publish to hi.tasks.{team_id}.{task_id}.completed
-    nats.subscribe("hi.tasks.*.*.completed", [&store](const std::string& subject,
-                                                       const std::string& data) {
-      try {
-        auto msg = nlohmann::json::parse(data);
-        // Myrmidon payload uses "task_id" (snake_case)
-        std::string task_id;
-        if (msg.contains("data") && msg["data"].contains("task_id")) {
-          task_id = msg["data"]["task_id"].get<std::string>();
-        } else if (msg.contains("task_id")) {
-          task_id = msg["task_id"].get<std::string>();
-        }
-        if (!task_id.empty()) {
-          store.mark_task_completed(task_id);
-          std::cout << "[agamemnon] task completed via " << subject << ": " << task_id << "\n";
-        }
-      } catch (...) {
-        // Ignore malformed payloads.
-      }
-    });
+    nats.subscribe(
+        "hi.tasks.*.*.completed", [&store](const std::string& subject, const std::string& data) {
+          try {
+            auto msg = nlohmann::json::parse(data);
+            // Myrmidon payload uses "task_id" (snake_case)
+            std::string task_id;
+            if (msg.contains("data") && msg["data"].contains("task_id")) {
+              task_id = msg["data"]["task_id"].get<std::string>();
+            } else if (msg.contains("task_id")) {
+              task_id = msg["task_id"].get<std::string>();
+            }
+            if (!task_id.empty()) {
+              store.mark_task_completed(task_id);
+              std::cout << "[agamemnon] task completed via " << subject << ": " << task_id << "\n";
+            }
+          } catch (...) {
+            // Ignore malformed payloads.
+          }
+        });
   } else {
     std::cerr << "[agamemnon] WARNING: running without NATS — events will be skipped\n";
   }
