@@ -47,4 +47,7 @@ ENV PORT=8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -qO- http://localhost:${PORT}/health || exit 1
 
+RUN useradd -r -s /usr/sbin/nologin agamemnon
+USER agamemnon
+
 CMD ["ProjectAgamemnon_server"]
