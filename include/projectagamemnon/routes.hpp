@@ -1,7 +1,9 @@
 #pragma once
 
 // Forward declarations to avoid pulling in heavy headers here.
-namespace httplib { class Server; }
+namespace httplib {
+class Server;
+}
 
 namespace projectagamemnon {
 

@@ -21,21 +21,21 @@ std::string generate_uuid() {
   };
 
   std::ostringstream ss;
-  for (int i = 0; i < 8; ++i)  ss << hex(dist(rng));
+  for (int i = 0; i < 8; ++i) ss << hex(dist(rng));
   ss << '-';
-  for (int i = 0; i < 4; ++i)  ss << hex(dist(rng));
+  for (int i = 0; i < 4; ++i) ss << hex(dist(rng));
   ss << "-4";
-  for (int i = 0; i < 3; ++i)  ss << hex(dist(rng));
+  for (int i = 0; i < 3; ++i) ss << hex(dist(rng));
   ss << '-';
   ss << hex(dist8(rng));
-  for (int i = 0; i < 3; ++i)  ss << hex(dist(rng));
+  for (int i = 0; i < 3; ++i) ss << hex(dist(rng));
   ss << '-';
   for (int i = 0; i < 12; ++i) ss << hex(dist(rng));
   return ss.str();
 }
 
 std::string now_iso8601() {
-  auto now    = std::chrono::system_clock::now();
+  auto now = std::chrono::system_clock::now();
   std::time_t t = std::chrono::system_clock::to_time_t(now);
   std::tm tm_buf{};
 #ifdef _WIN32
@@ -54,19 +54,19 @@ json Store::create_agent(const json& body) {
   std::lock_guard<std::mutex> lk(mutex_);
   std::string id = generate_uuid();
   json agent;
-  agent["id"]               = id;
-  agent["name"]             = body.value("name", "unnamed");
-  agent["label"]            = body.value("label", "");
-  agent["program"]          = body.value("program", "");
+  agent["id"] = id;
+  agent["name"] = body.value("name", "unnamed");
+  agent["label"] = body.value("label", "");
+  agent["program"] = body.value("program", "");
   agent["workingDirectory"] = body.value("workingDirectory", "");
-  agent["programArgs"]      = body.value("programArgs", json::array());
-  agent["taskDescription"]  = body.value("taskDescription", "");
-  agent["tags"]             = body.value("tags", json::array());
-  agent["owner"]            = body.value("owner", "");
-  agent["role"]             = body.value("role", "worker");
-  agent["host"]             = body.value("host", "local");
-  agent["status"]           = "offline";
-  agent["createdAt"]        = now_iso8601();
+  agent["programArgs"] = body.value("programArgs", json::array());
+  agent["taskDescription"] = body.value("taskDescription", "");
+  agent["tags"] = body.value("tags", json::array());
+  agent["owner"] = body.value("owner", "");
+  agent["role"] = body.value("role", "worker");
+  agent["host"] = body.value("host", "local");
+  agent["status"] = "offline";
+  agent["createdAt"] = now_iso8601();
   agents_[id] = agent;
   return {{"id", id}, {"agent", agent}};
 }
@@ -130,8 +130,8 @@ json Store::create_team(const json& body) {
   std::lock_guard<std::mutex> lk(mutex_);
   std::string id = generate_uuid();
   json team;
-  team["id"]       = id;
-  team["name"]     = body.value("name", "unnamed-team");
+  team["id"] = id;
+  team["name"] = body.value("name", "unnamed-team");
   team["agentIds"] = body.value("agentIds", json::array());
   team["createdAt"] = now_iso8601();
   teams_[id] = team;
@@ -157,7 +157,7 @@ json Store::update_team(const std::string& id, const json& body) {
   auto it = teams_.find(id);
   if (it == teams_.end()) return nullptr;
   if (body.contains("agentIds")) it->second["agentIds"] = body["agentIds"];
-  if (body.contains("name"))     it->second["name"]     = body["name"];
+  if (body.contains("name")) it->second["name"] = body["name"];
   return it->second;
 }
 
@@ -172,16 +172,16 @@ json Store::create_task(const std::string& team_id, const json& body) {
   std::lock_guard<std::mutex> lk(mutex_);
   std::string id = generate_uuid();
   json task;
-  task["id"]             = id;
-  task["teamId"]         = team_id;
-  task["subject"]        = body.value("subject", "");
-  task["description"]    = body.value("description", "");
-  task["assigneeAgentId"]= body.value("assigneeAgentId", "");
-  task["blockedBy"]      = body.value("blockedBy", json::array());
-  task["type"]           = body.value("type", "general");
-  task["status"]         = "pending";
-  task["createdAt"]      = now_iso8601();
-  task["completedAt"]    = nullptr;
+  task["id"] = id;
+  task["teamId"] = team_id;
+  task["subject"] = body.value("subject", "");
+  task["description"] = body.value("description", "");
+  task["assigneeAgentId"] = body.value("assigneeAgentId", "");
+  task["blockedBy"] = body.value("blockedBy", json::array());
+  task["type"] = body.value("type", "general");
+  task["status"] = "pending";
+  task["createdAt"] = now_iso8601();
+  task["completedAt"] = nullptr;
   tasks_[id] = task;
   return {{"task", task}};
 }
@@ -225,7 +225,7 @@ void Store::mark_task_completed(const std::string& task_id) {
   std::lock_guard<std::mutex> lk(mutex_);
   auto it = tasks_.find(task_id);
   if (it != tasks_.end()) {
-    it->second["status"]      = "completed";
+    it->second["status"] = "completed";
     it->second["completedAt"] = now_iso8601();
   }
 }
@@ -243,9 +243,9 @@ json Store::create_fault(const std::string& type) {
   std::lock_guard<std::mutex> lk(mutex_);
   std::string id = generate_uuid();
   json fault;
-  fault["id"]        = id;
-  fault["type"]      = type;
-  fault["active"]    = true;
+  fault["id"] = id;
+  fault["type"] = type;
+  fault["active"] = true;
   fault["createdAt"] = now_iso8601();
   faults_[id] = fault;
   return {{"fault", fault}};
