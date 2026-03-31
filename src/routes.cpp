@@ -73,12 +73,29 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     reply_json(res, 200, sp->list_agents());
   });
 
+  // POST /v1/agents/docker — registered BEFORE generic /v1/agents POST
+  server.Post("/v1/agents/docker",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      json body;
+      if (!parse_body(req, res, body)) return;
+      // Docker agents are created the same way but with hostId and image fields
+      json result = sp->create_agent(body);
+      auto& agent = result["agent"];
+      std::string host = agent.value("host", "docker");
+      std::string name = agent.value("name", "unknown");
+      np->publish("hi.agents." + host + "." + name + ".created", result.dump());
+      reply_json(res, 201, result);
+    });
+
   // POST /v1/agents
   server.Post("/v1/agents", [sp, np](const httplib::Request& req, httplib::Response& res) {
     json body;
     if (!parse_body(req, res, body)) return;
     json result = sp->create_agent(body);
-    np->publish("hi.agents.created", result.dump());
+    auto& agent = result["agent"];
+    std::string host = agent.value("host", "local");
+    std::string name = agent.value("name", "unknown");
+    np->publish("hi.agents." + host + "." + name + ".created", result.dump());
     reply_json(res, 201, result);
   });
 
@@ -88,7 +105,9 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       std::string id = req.matches[1];
       json result = sp->start_agent(id);
       if (result.is_null()) { reply_not_found(res, "agent"); return; }
-      np->publish("hi.agents.started", result.dump());
+      std::string host = result.value("host", "local");
+      std::string name = result.value("name", "unknown");
+      np->publish("hi.agents." + host + "." + name + ".updated", result.dump());
       reply_json(res, 200, result);
     });
 
@@ -98,8 +117,19 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       std::string id = req.matches[1];
       json result = sp->stop_agent(id);
       if (result.is_null()) { reply_not_found(res, "agent"); return; }
-      np->publish("hi.agents.stopped", result.dump());
+      std::string host = result.value("host", "local");
+      std::string name = result.value("name", "unknown");
+      np->publish("hi.agents." + host + "." + name + ".updated", result.dump());
       reply_json(res, 200, result);
+    });
+
+  // GET /v1/agents/by-name/:name — registered BEFORE the generic :id route
+  server.Get(R"(/v1/agents/by-name/([^/]+))",
+    [sp](const httplib::Request& req, httplib::Response& res) {
+      std::string name = req.matches[1];
+      json agent = sp->get_agent_by_name(name);
+      if (agent.is_null()) { reply_not_found(res, "agent"); return; }
+      reply_json(res, 200, {{"agent", agent}});
     });
 
   // GET /v1/agents/:id
@@ -119,7 +149,9 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       if (!parse_body(req, res, body)) return;
       json result = sp->update_agent(id, body);
       if (result.is_null()) { reply_not_found(res, "agent"); return; }
-      np->publish("hi.agents.updated", result.dump());
+      std::string host = result.value("host", "local");
+      std::string name = result.value("name", "unknown");
+      np->publish("hi.agents." + host + "." + name + ".updated", result.dump());
       reply_json(res, 200, {{"agent", result}});
     });
 
@@ -127,8 +159,11 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
   server.Delete(R"(/v1/agents/([^/]+))",
     [sp, np](const httplib::Request& req, httplib::Response& res) {
       std::string id = req.matches[1];
+      json agent = sp->get_agent(id);
       if (!sp->delete_agent(id)) { reply_not_found(res, "agent"); return; }
-      np->publish("hi.agents.deleted", json{{"id", id}}.dump());
+      std::string host = agent.is_null() ? "local" : agent.value("host", "local");
+      std::string name = agent.is_null() ? "unknown" : agent.value("name", "unknown");
+      np->publish("hi.agents." + host + "." + name + ".deleted", json{{"id", id}}.dump());
       reply_json(res, 200, {{"deleted", id}});
     });
 
@@ -229,6 +264,19 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       reply_json(res, 200, {{"task", task}});
     });
 
+  // PUT /v1/teams/:team_id/tasks/:task_id — Telemachy uses PUT for task updates
+  server.Put(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
+    [sp, np](const httplib::Request& req, httplib::Response& res) {
+      std::string team_id = req.matches[1];
+      std::string task_id = req.matches[2];
+      json body;
+      if (!parse_body(req, res, body)) return;
+      json result = sp->update_task(team_id, task_id, body);
+      if (result.is_null()) { reply_not_found(res, "task"); return; }
+      np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
+      reply_json(res, 200, {{"task", result}});
+    });
+
   // PATCH /v1/teams/:team_id/tasks/:task_id
   server.Patch(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
     [sp, np](const httplib::Request& req, httplib::Response& res) {
@@ -238,9 +286,15 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
       if (!parse_body(req, res, body)) return;
       json result = sp->update_task(team_id, task_id, body);
       if (result.is_null()) { reply_not_found(res, "task"); return; }
-      np->publish("hi.tasks.updated", result.dump());
+      np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
       reply_json(res, 200, {{"task", result}});
     });
+
+  // ── Workflows ────────────────────────────────────────────────────────────
+
+  server.Get("/v1/workflows", [](const httplib::Request&, httplib::Response& res) {
+    reply_json(res, 200, {{"workflows", json::array()}});
+  });
 
   // ── Chaos ────────────────────────────────────────────────────────────────
 
