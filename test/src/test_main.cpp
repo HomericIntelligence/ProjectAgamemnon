@@ -4,12 +4,8 @@
 
 namespace projectagamemnon::test {
 
-TEST(VersionTest, ProjectNameIsCorrect) {
-  EXPECT_EQ(kProjectName, "ProjectAgamemnon");
-}
+TEST(VersionTest, ProjectNameIsCorrect) { EXPECT_EQ(kProjectName, "ProjectAgamemnon"); }
 
-TEST(VersionTest, VersionIsSet) {
-  EXPECT_FALSE(kVersion.empty());
-}
+TEST(VersionTest, VersionIsSet) { EXPECT_FALSE(kVersion.empty()); }
 
-} // namespace projectagamemnon::test
+}  // namespace projectagamemnon::test
