@@ -7,11 +7,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \
     libssl-dev \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --break-system-packages conan
 
 WORKDIR /src
 
-# Copy CMake configuration first so dependency fetching can be cached separately.
+# Copy Conan files first for dependency caching.
+COPY conanfile.py ./
+COPY conan/ conan/
+RUN conan install . \
+    --output-folder=build \
+    --profile=conan/profiles/default \
+    --build=missing
+
+# Copy CMake configuration so FetchContent (nats.c) can be cached separately.
 COPY CMakeLists.txt ./
 COPY CMakePresets.json ./
 COPY cmake/ cmake/
@@ -22,6 +34,7 @@ COPY src/ src/
 COPY test/ test/
 
 RUN cmake -B build -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DProjectAgamemnon_BUILD_TESTING=OFF \
     -DProjectAgamemnon_ENABLE_CLANG_TIDY=OFF \
@@ -45,7 +58,7 @@ ENV NATS_URL=nats://localhost:4222
 ENV PORT=8080
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:${PORT}/health || exit 1
+    CMD wget -qO- http://localhost:${PORT}/v1/health || exit 1
 
 RUN useradd -r -s /usr/sbin/nologin agamemnon
 USER agamemnon
