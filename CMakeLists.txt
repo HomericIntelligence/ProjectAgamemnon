@@ -20,25 +20,13 @@ include(cmake/Doxygen.cmake)
 include(cmake/SourcesAndHeaders.cmake)
 
 # ── External dependencies ────────────────────────────────────────────────────
+# cpp-httplib and nlohmann_json are provided by Conan (run `just deps` first).
+# nats.c stays as FetchContent (not reliably available on ConanCenter).
+find_package(httplib REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(OpenSSL REQUIRED)
+
 include(FetchContent)
-
-FetchContent_Declare(
-  cpp_httplib
-  GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-  GIT_TAG        v0.18.3
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(cpp_httplib)
-
-FetchContent_Declare(
-  nlohmann_json
-  GIT_REPOSITORY https://github.com/nlohmann/json.git
-  GIT_TAG        v3.11.3
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(nlohmann_json)
-
-# nats.c — JetStream client library
 FetchContent_Declare(
   nats_c
   GIT_REPOSITORY https://github.com/nats-io/nats.c.git
@@ -91,6 +79,8 @@ target_link_libraries(
     httplib::httplib
     nlohmann_json::nlohmann_json
     nats_static
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # Suppress warnings from external headers on the server target

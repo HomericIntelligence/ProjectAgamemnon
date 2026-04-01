@@ -3,7 +3,15 @@ set shell := ["bash", "-c"]
 default:
   @just --list
 
-build:
+# Install Conan dependencies (cpp-httplib, nlohmann_json, gtest)
+deps:
+  conan install . --output-folder=build/debug --profile=conan/profiles/debug --build=missing
+
+# Install Conan dependencies for release
+deps-release:
+  conan install . --output-folder=build/release --profile=conan/profiles/default --build=missing
+
+build: deps
   cmake --preset debug && cmake --build --preset debug
 
 test:
