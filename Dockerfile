@@ -3,6 +3,7 @@ FROM ubuntu:24.04 AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     ninja-build \
+    make \
     g++ \
     git \
     ca-certificates \
@@ -11,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --break-system-packages conan
+RUN pip3 install --break-system-packages conan && conan profile detect
 
 WORKDIR /src
 
