@@ -3,6 +3,7 @@ Checks: >
   *,
   -fuchsia-*,
   -llvm-*,
+  -llvmlibc-*,
   -google-readability-todo,
   -readability-magic-numbers,
   -cppcoreguidelines-avoid-magic-numbers,
@@ -13,5 +14,6 @@ Checks: >
   -hicpp-no-array-decay
 WarningsAsErrors: ''
 HeaderFilterRegex: '(include|src|test)/'
+ExcludeHeaderFilterRegex: '_deps/'
 FormatStyle: file
 ...
