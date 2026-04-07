@@ -132,7 +132,7 @@ json Store::create_team(const json& body) {
   json team;
   team["id"] = id;
   team["name"] = body.value("name", "unnamed-team");
-  team["agentIds"] = body.value("agentIds", json::array());
+  team["agentIds"] = body.contains("agent_ids") ? body["agent_ids"] : body.value("agentIds", json::array());
   team["createdAt"] = now_iso8601();
   teams_[id] = team;
   return {{"team", team}};
@@ -157,6 +157,7 @@ json Store::update_team(const std::string& id, const json& body) {
   auto it = teams_.find(id);
   if (it == teams_.end()) return nullptr;
   if (body.contains("agentIds")) it->second["agentIds"] = body["agentIds"];
+  else if (body.contains("agent_ids")) it->second["agentIds"] = body["agent_ids"];
   if (body.contains("name")) it->second["name"] = body["name"];
   return it->second;
 }
@@ -201,6 +202,10 @@ json Store::update_task(const std::string& team_id, const std::string& task_id, 
   if (!team_id.empty() && it->second.value("teamId", "") != team_id) return nullptr;
   for (auto& [key, val] : body.items()) {
     if (key != "id" && key != "teamId" && key != "createdAt") it->second[key] = val;
+  }
+  if (body.contains("status") && body["status"] == "completed" &&
+      it->second.value("completedAt", nullptr).is_null()) {
+    it->second["completedAt"] = now_iso8601();
   }
   return it->second;
 }
