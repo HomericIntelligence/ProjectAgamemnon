@@ -207,7 +207,7 @@ json Store::update_task(const std::string& team_id, const std::string& task_id, 
     if (key != "id" && key != "teamId" && key != "createdAt") it->second[key] = val;
   }
   if (body.contains("status") && body["status"] == "completed" &&
-      it->second.value("completedAt", nullptr).is_null()) {
+      it->second.value("completedAt", json(nullptr)).is_null()) {
     it->second["completedAt"] = now_iso8601();
   }
   return it->second;
