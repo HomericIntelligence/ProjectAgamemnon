@@ -132,7 +132,8 @@ json Store::create_team(const json& body) {
   json team;
   team["id"] = id;
   team["name"] = body.value("name", "unnamed-team");
-  team["agentIds"] = body.contains("agent_ids") ? body["agent_ids"] : body.value("agentIds", json::array());
+  team["agentIds"] =
+      body.contains("agent_ids") ? body["agent_ids"] : body.value("agentIds", json::array());
   team["createdAt"] = now_iso8601();
   teams_[id] = team;
   return {{"team", team}};
@@ -156,8 +157,10 @@ json Store::update_team(const std::string& id, const json& body) {
   std::lock_guard<std::mutex> lk(mutex_);
   auto it = teams_.find(id);
   if (it == teams_.end()) return nullptr;
-  if (body.contains("agentIds")) it->second["agentIds"] = body["agentIds"];
-  else if (body.contains("agent_ids")) it->second["agentIds"] = body["agent_ids"];
+  if (body.contains("agentIds"))
+    it->second["agentIds"] = body["agentIds"];
+  else if (body.contains("agent_ids"))
+    it->second["agentIds"] = body["agent_ids"];
   if (body.contains("name")) it->second["name"] = body["name"];
   return it->second;
 }
