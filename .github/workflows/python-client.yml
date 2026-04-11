@@ -1,0 +1,87 @@
+name: Python Client CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "clients/python/**"
+      - ".github/workflows/python-client.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "clients/python/**"
+      - ".github/workflows/python-client.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff>=0.4
+
+      - name: Run ruff
+        run: ruff check src/ tests/
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package and mypy
+        run: pip install -e ".[dev]" mypy>=1.10 pydantic>=2.0 httpx>=0.27
+
+      - name: Run mypy
+        run: mypy src/
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: clients/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package and test deps
+        run: |
+          pip install -e .
+          pip install pytest>=8.0 pytest-asyncio>=0.23 pytest-cov>=5.0 respx>=0.21
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v \
+            --cov=agamemnon_client \
+            --cov-report=term-missing \
+            --cov-fail-under=96
