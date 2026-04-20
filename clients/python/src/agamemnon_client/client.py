@@ -12,12 +12,12 @@ from agamemnon_client.errors import (
     AgamemnonConnectionError,
 )
 from agamemnon_client.models import (
+    AgamemnonConfig,
     Agent,
     AgentCreate,
     AgentDockerCreate,
     AgentUpdate,
     ChaosEntry,
-    AgamemnonConfig,
     FailureSpec,
     HealthResponse,
     InjectionResult,
@@ -169,7 +169,7 @@ class AgamemnonClient:
     async def delete_agent(self, agent_id: str) -> str:
         """Delete an agent. Returns the deleted agent's ID."""
         data = await self._request("DELETE", f"/v1/agents/{agent_id}")
-        return data.get("deleted", agent_id)
+        return str(data.get("deleted", agent_id))
 
     # ── Teams ─────────────────────────────────────────────────────────────────
 
@@ -201,7 +201,7 @@ class AgamemnonClient:
     async def delete_team(self, team_id: str) -> str:
         """Delete a team. Returns the deleted team's ID."""
         data = await self._request("DELETE", f"/v1/teams/{team_id}")
-        return data.get("deleted", team_id)
+        return str(data.get("deleted", team_id))
 
     # ── Tasks ─────────────────────────────────────────────────────────────────
 
@@ -259,7 +259,9 @@ class AgamemnonClient:
         faults = data if isinstance(data, list) else data.get("faults", [])
         return [ChaosEntry.model_validate(f) for f in faults]
 
-    async def inject_chaos(self, fault_type: str, spec: FailureSpec | None = None) -> InjectionResult:
+    async def inject_chaos(
+        self, fault_type: str, spec: FailureSpec | None = None
+    ) -> InjectionResult:
         """Inject a chaos fault of the given type."""
         body = spec.model_dump() if spec is not None else {}
         data = await self._request("POST", f"/v1/chaos/{fault_type}", json=body)
@@ -268,4 +270,4 @@ class AgamemnonClient:
     async def delete_chaos(self, fault_id: str) -> str:
         """Remove a chaos fault. Returns the deleted fault's ID."""
         data = await self._request("DELETE", f"/v1/chaos/{fault_id}")
-        return data.get("deleted", fault_id)
+        return str(data.get("deleted", fault_id))

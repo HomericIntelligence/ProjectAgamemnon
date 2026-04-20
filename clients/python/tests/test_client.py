@@ -5,7 +5,6 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
-
 from agamemnon_client.client import AgamemnonClient
 from agamemnon_client.errors import AgamemnonAPIError, AgamemnonConnectionError
 from agamemnon_client.models import (
