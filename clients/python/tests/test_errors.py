@@ -1,6 +1,7 @@
 """Tests for the agamemnon_client error hierarchy."""
 
 import pytest
+
 from agamemnon_client.errors import (
     AgamemnonAPIError,
     AgamemnonConnectionError,

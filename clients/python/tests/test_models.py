@@ -1,6 +1,7 @@
 """Tests for agamemnon_client Pydantic models."""
 
 import pytest
+
 from agamemnon_client.models import (
     AgamemnonConfig,
     Agent,
