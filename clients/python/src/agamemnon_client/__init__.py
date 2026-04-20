@@ -8,8 +8,8 @@ from agamemnon_client.client import AgamemnonClient as AgamemnonClient
 from agamemnon_client.errors import AgamemnonAPIError as AgamemnonAPIError
 from agamemnon_client.errors import AgamemnonConnectionError as AgamemnonConnectionError
 from agamemnon_client.errors import AgamemnonError as AgamemnonError
-from agamemnon_client.models import Agent as Agent
 from agamemnon_client.models import AgamemnonConfig as AgamemnonConfig
+from agamemnon_client.models import Agent as Agent
 from agamemnon_client.models import AgentCreate as AgentCreate
 from agamemnon_client.models import AgentDockerCreate as AgentDockerCreate
 from agamemnon_client.models import AgentUpdate as AgentUpdate
