@@ -3,6 +3,8 @@
 #include <functional>
 #include <string>
 
+#include "nlohmann/json.hpp"
+
 namespace projectagamemnon {
 
 /// Thin wrapper around the nats.c client library with JetStream support.
@@ -38,6 +40,11 @@ class NatsClient {
   /// The callback receives (subject, data) strings.
   using MessageCallback = std::function<void(const std::string& subject, const std::string& data)>;
   bool subscribe(const std::string& subject, MessageCallback cb);
+
+  /// Publish a structured log event to hi.logs.agamemnon.<event> (ADR-005).
+  /// Fire-and-forget: NATS failures are logged but do not propagate.
+  void publish_log(const std::string& subject, const std::string& level,
+                   const std::string& message, const nlohmann::json& metadata);
 
  private:
   std::string url_;

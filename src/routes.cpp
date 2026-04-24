@@ -84,7 +84,12 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     auto& agent = result["agent"];
     std::string host = agent.value("host", "docker");
     std::string name = agent.value("name", "unknown");
+    std::string agent_id = agent.value("id", "unknown");
+    std::string agent_type = agent.value("type", "unknown");
     np->publish("hi.agents." + host + "." + name + ".created", result.dump());
+    np->publish_log("hi.logs.agamemnon.agent_created", "info",
+                    "Agent created: " + agent_id,
+                    {{"agent_id", agent_id}, {"name", name}, {"type", agent_type}, {"host", host}});
     reply_json(res, 201, result);
   });
 
@@ -96,7 +101,12 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     auto& agent = result["agent"];
     std::string host = agent.value("host", "local");
     std::string name = agent.value("name", "unknown");
+    std::string agent_id = agent.value("id", "unknown");
+    std::string agent_type = agent.value("type", "unknown");
     np->publish("hi.agents." + host + "." + name + ".created", result.dump());
+    np->publish_log("hi.logs.agamemnon.agent_created", "info",
+                    "Agent created: " + agent_id,
+                    {{"agent_id", agent_id}, {"name", name}, {"type", agent_type}, {"host", host}});
     reply_json(res, 201, result);
   });
 
@@ -273,6 +283,12 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
                                          {"type", task_type},
                                          {"assignee", task.value("assigneeAgentId", "")}};
                 np->publish(myrmidon_subject, myrmidon_payload.dump());
+                np->publish_log("hi.logs.agamemnon.task_dispatched", "info",
+                                "Task dispatched: " + task_id,
+                                {{"task_id", task_id},
+                                 {"team_id", team_id},
+                                 {"type", task_type},
+                                 {"subject", myrmidon_subject}});
 
                 reply_json(res, 201, result);
               });
@@ -302,7 +318,19 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
                  reply_not_found(res, "task");
                  return;
                }
+               const auto& task = result["task"].is_null() ? result : result["task"];
+               std::string status = task.value("status", "");
                np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
+               if (status == "completed") {
+                 std::string task_type = task.value("type", "unknown");
+                 std::string assignee = task.value("assigneeAgentId", "");
+                 np->publish_log("hi.logs.agamemnon.task_completed", "info",
+                                 "Task completed: " + task_id,
+                                 {{"task_id", task_id},
+                                  {"team_id", team_id},
+                                  {"type", task_type},
+                                  {"assignee", assignee}});
+               }
                reply_json(res, 200, {{"task", result}});
              });
 
@@ -318,7 +346,19 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
                    reply_not_found(res, "task");
                    return;
                  }
+                 const auto& task = result["task"].is_null() ? result : result["task"];
+                 std::string status = task.value("status", "");
                  np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
+                 if (status == "completed") {
+                   std::string task_type = task.value("type", "unknown");
+                   std::string assignee = task.value("assigneeAgentId", "");
+                   np->publish_log("hi.logs.agamemnon.task_completed", "info",
+                                   "Task completed: " + task_id,
+                                   {{"task_id", task_id},
+                                    {"team_id", team_id},
+                                    {"type", task_type},
+                                    {"assignee", assignee}});
+                 }
                  reply_json(res, 200, {{"task", result}});
                });
 
