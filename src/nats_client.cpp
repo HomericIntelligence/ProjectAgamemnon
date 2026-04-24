@@ -1,10 +1,12 @@
 #include "projectagamemnon/nats_client.hpp"
 
 // NOLINTNEXTLINE(misc-include-cleaner) — nats.h brings in its own transitive includes
+#include <chrono>
 #include <iostream>
 #include <string>
 
 #include "nats.h"
+#include "nlohmann/json.hpp"
 
 namespace projectagamemnon {
 
@@ -124,6 +126,28 @@ bool NatsClient::publish(const std::string& subject, const std::string& payload)
     return false;
   }
   return true;
+}
+
+// ── publish_log ───────────────────────────────────────────────────────────────
+
+void NatsClient::publish_log(const std::string& subject, const std::string& level,
+                              const std::string& message, const nlohmann::json& metadata) {
+  // Build ADR-005 structured log payload.
+  auto now = std::chrono::system_clock::now();
+  double ts =
+      std::chrono::duration<double>(now.time_since_epoch()).count();
+
+  nlohmann::json payload = {
+      {"timestamp", ts},
+      {"service", "agamemnon"},
+      {"level", level},
+      {"message", message},
+      {"metadata", metadata},
+  };
+
+  // Fire-and-forget: ignore publish return value so NATS errors never affect
+  // the caller's request handling path.
+  publish(subject, payload.dump());
 }
 
 // ── subscribe ─────────────────────────────────────────────────────────────────
