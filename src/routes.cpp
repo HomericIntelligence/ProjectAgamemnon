@@ -87,8 +87,7 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     std::string agent_id = agent.value("id", "unknown");
     std::string agent_type = agent.value("type", "unknown");
     np->publish("hi.agents." + host + "." + name + ".created", result.dump());
-    np->publish_log("hi.logs.agamemnon.agent_created", "info",
-                    "Agent created: " + agent_id,
+    np->publish_log("hi.logs.agamemnon.agent_created", "info", "Agent created: " + agent_id,
                     {{"agent_id", agent_id}, {"name", name}, {"type", agent_type}, {"host", host}});
     reply_json(res, 201, result);
   });
@@ -104,8 +103,7 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
     std::string agent_id = agent.value("id", "unknown");
     std::string agent_type = agent.value("type", "unknown");
     np->publish("hi.agents." + host + "." + name + ".created", result.dump());
-    np->publish_log("hi.logs.agamemnon.agent_created", "info",
-                    "Agent created: " + agent_id,
+    np->publish_log("hi.logs.agamemnon.agent_created", "info", "Agent created: " + agent_id,
                     {{"agent_id", agent_id}, {"name", name}, {"type", agent_type}, {"host", host}});
     reply_json(res, 201, result);
   });
@@ -263,35 +261,34 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
              });
 
   // POST /v1/teams/:team_id/tasks
-  server.Post(R"(/v1/teams/([^/]+)/tasks)",
-              [sp, np](const httplib::Request& req, httplib::Response& res) {
-                std::string team_id = req.matches[1];
-                json body;
-                if (!parse_body(req, res, body)) return;
-                json result = sp->create_task(team_id, body);
-                np->publish("hi.tasks.created", result.dump());
+  server.Post(
+      R"(/v1/teams/([^/]+)/tasks)", [sp, np](const httplib::Request& req, httplib::Response& res) {
+        std::string team_id = req.matches[1];
+        json body;
+        if (!parse_body(req, res, body)) return;
+        json result = sp->create_task(team_id, body);
+        np->publish("hi.tasks.created", result.dump());
 
-                // Dispatch to myrmidon work queue: hi.myrmidon.{type}.{task_id}
-                const auto& task = result["task"];
-                std::string task_type = task.value("type", "general");
-                std::string task_id = task.value("id", "unknown");
-                std::string myrmidon_subject = "hi.myrmidon." + task_type + "." + task_id;
-                json myrmidon_payload = {{"task_id", task_id},
-                                         {"team_id", team_id},
-                                         {"subject", task.value("subject", "")},
-                                         {"description", task.value("description", "")},
-                                         {"type", task_type},
-                                         {"assignee", task.value("assigneeAgentId", "")}};
-                np->publish(myrmidon_subject, myrmidon_payload.dump());
-                np->publish_log("hi.logs.agamemnon.task_dispatched", "info",
-                                "Task dispatched: " + task_id,
-                                {{"task_id", task_id},
+        // Dispatch to myrmidon work queue: hi.myrmidon.{type}.{task_id}
+        const auto& task = result["task"];
+        std::string task_type = task.value("type", "general");
+        std::string task_id = task.value("id", "unknown");
+        std::string myrmidon_subject = "hi.myrmidon." + task_type + "." + task_id;
+        json myrmidon_payload = {{"task_id", task_id},
                                  {"team_id", team_id},
+                                 {"subject", task.value("subject", "")},
+                                 {"description", task.value("description", "")},
                                  {"type", task_type},
-                                 {"subject", myrmidon_subject}});
+                                 {"assignee", task.value("assigneeAgentId", "")}};
+        np->publish(myrmidon_subject, myrmidon_payload.dump());
+        np->publish_log("hi.logs.agamemnon.task_dispatched", "info", "Task dispatched: " + task_id,
+                        {{"task_id", task_id},
+                         {"team_id", team_id},
+                         {"type", task_type},
+                         {"subject", myrmidon_subject}});
 
-                reply_json(res, 201, result);
-              });
+        reply_json(res, 201, result);
+      });
 
   // GET /v1/teams/:team_id/tasks/:task_id
   server.Get(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
@@ -307,60 +304,58 @@ void register_routes(httplib::Server& server, Store& store, NatsClient& nats) {
              });
 
   // PUT /v1/teams/:team_id/tasks/:task_id — Telemachy uses PUT for task updates
-  server.Put(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
-             [sp, np](const httplib::Request& req, httplib::Response& res) {
-               std::string team_id = req.matches[1];
-               std::string task_id = req.matches[2];
-               json body;
-               if (!parse_body(req, res, body)) return;
-               json result = sp->update_task(team_id, task_id, body);
-               if (result.is_null()) {
-                 reply_not_found(res, "task");
-                 return;
-               }
-               const auto& task = result["task"].is_null() ? result : result["task"];
-               std::string status = task.value("status", "");
-               np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
-               if (status == "completed") {
-                 std::string task_type = task.value("type", "unknown");
-                 std::string assignee = task.value("assigneeAgentId", "");
-                 np->publish_log("hi.logs.agamemnon.task_completed", "info",
-                                 "Task completed: " + task_id,
-                                 {{"task_id", task_id},
-                                  {"team_id", team_id},
-                                  {"type", task_type},
-                                  {"assignee", assignee}});
-               }
-               reply_json(res, 200, {{"task", result}});
-             });
+  server.Put(R"(/v1/teams/([^/]+)/tasks/([^/]+))", [sp, np](const httplib::Request& req,
+                                                            httplib::Response& res) {
+    std::string team_id = req.matches[1];
+    std::string task_id = req.matches[2];
+    json body;
+    if (!parse_body(req, res, body)) return;
+    json result = sp->update_task(team_id, task_id, body);
+    if (result.is_null()) {
+      reply_not_found(res, "task");
+      return;
+    }
+    const auto& task = result["task"].is_null() ? result : result["task"];
+    std::string status = task.value("status", "");
+    np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
+    if (status == "completed") {
+      std::string task_type = task.value("type", "unknown");
+      std::string assignee = task.value("assigneeAgentId", "");
+      np->publish_log("hi.logs.agamemnon.task_completed", "info", "Task completed: " + task_id,
+                      {{"task_id", task_id},
+                       {"team_id", team_id},
+                       {"type", task_type},
+                       {"assignee", assignee}});
+    }
+    reply_json(res, 200, {{"task", result}});
+  });
 
   // PATCH /v1/teams/:team_id/tasks/:task_id
-  server.Patch(R"(/v1/teams/([^/]+)/tasks/([^/]+))",
-               [sp, np](const httplib::Request& req, httplib::Response& res) {
-                 std::string team_id = req.matches[1];
-                 std::string task_id = req.matches[2];
-                 json body;
-                 if (!parse_body(req, res, body)) return;
-                 json result = sp->update_task(team_id, task_id, body);
-                 if (result.is_null()) {
-                   reply_not_found(res, "task");
-                   return;
-                 }
-                 const auto& task = result["task"].is_null() ? result : result["task"];
-                 std::string status = task.value("status", "");
-                 np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
-                 if (status == "completed") {
-                   std::string task_type = task.value("type", "unknown");
-                   std::string assignee = task.value("assigneeAgentId", "");
-                   np->publish_log("hi.logs.agamemnon.task_completed", "info",
-                                   "Task completed: " + task_id,
-                                   {{"task_id", task_id},
-                                    {"team_id", team_id},
-                                    {"type", task_type},
-                                    {"assignee", assignee}});
-                 }
-                 reply_json(res, 200, {{"task", result}});
-               });
+  server.Patch(R"(/v1/teams/([^/]+)/tasks/([^/]+))", [sp, np](const httplib::Request& req,
+                                                              httplib::Response& res) {
+    std::string team_id = req.matches[1];
+    std::string task_id = req.matches[2];
+    json body;
+    if (!parse_body(req, res, body)) return;
+    json result = sp->update_task(team_id, task_id, body);
+    if (result.is_null()) {
+      reply_not_found(res, "task");
+      return;
+    }
+    const auto& task = result["task"].is_null() ? result : result["task"];
+    std::string status = task.value("status", "");
+    np->publish("hi.tasks." + team_id + "." + task_id + ".updated", result.dump());
+    if (status == "completed") {
+      std::string task_type = task.value("type", "unknown");
+      std::string assignee = task.value("assigneeAgentId", "");
+      np->publish_log("hi.logs.agamemnon.task_completed", "info", "Task completed: " + task_id,
+                      {{"task_id", task_id},
+                       {"team_id", team_id},
+                       {"type", task_type},
+                       {"assignee", assignee}});
+    }
+    reply_json(res, 200, {{"task", result}});
+  });
 
   // ── Workflows ────────────────────────────────────────────────────────────
 
