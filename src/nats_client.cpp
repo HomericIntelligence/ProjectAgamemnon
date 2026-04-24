@@ -131,18 +131,14 @@ bool NatsClient::publish(const std::string& subject, const std::string& payload)
 // ── publish_log ───────────────────────────────────────────────────────────────
 
 void NatsClient::publish_log(const std::string& subject, const std::string& level,
-                              const std::string& message, const nlohmann::json& metadata) {
+                             const std::string& message, const nlohmann::json& metadata) {
   // Build ADR-005 structured log payload.
   auto now = std::chrono::system_clock::now();
-  double ts =
-      std::chrono::duration<double>(now.time_since_epoch()).count();
+  double ts = std::chrono::duration<double>(now.time_since_epoch()).count();
 
   nlohmann::json payload = {
-      {"timestamp", ts},
-      {"service", "agamemnon"},
-      {"level", level},
-      {"message", message},
-      {"metadata", metadata},
+      {"timestamp", ts},    {"service", "agamemnon"}, {"level", level},
+      {"message", message}, {"metadata", metadata},
   };
 
   // Fire-and-forget: ignore publish return value so NATS errors never affect

@@ -43,8 +43,8 @@ class NatsClient {
 
   /// Publish a structured log event to hi.logs.agamemnon.<event> (ADR-005).
   /// Fire-and-forget: NATS failures are logged but do not propagate.
-  void publish_log(const std::string& subject, const std::string& level,
-                   const std::string& message, const nlohmann::json& metadata);
+  void publish_log(const std::string& subject, const std::string& level, const std::string& message,
+                   const nlohmann::json& metadata);
 
  private:
   std::string url_;
