@@ -98,7 +98,7 @@ jobs:
           fi
 
   # ── 4. security/dependency-scan ────────────────────────────────────────────
-  security/dependency-scan:
+  security-dependency-scan:
     name: security/dependency-scan
     runs-on: ubuntu-24.04
     steps:
@@ -122,7 +122,7 @@ jobs:
         run: trivy fs --exit-code 1 --severity HIGH,CRITICAL --scanners vuln .
 
   # ── 5. security/secrets-scan ───────────────────────────────────────────────
-  security/secrets-scan:
+  security-secrets-scan:
     name: security/secrets-scan
     runs-on: ubuntu-24.04
     steps:
@@ -211,7 +211,7 @@ jobs:
               --schemafile https://json.schemastore.org/github-workflow
 
   # ── 9. deps/version-sync ───────────────────────────────────────────────────
-  deps/version-sync:
+  deps-version-sync:
     name: deps/version-sync
     runs-on: ubuntu-24.04
     steps:
