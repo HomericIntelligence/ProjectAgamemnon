@@ -48,6 +48,11 @@ class RouteTestFixture : public ::testing::Test {
   // Preserves RoutesLimitsTest's no-wait_until_ready() behaviour.
   bool skip_wait_until_ready_{false};
 
+  // Configurable input limits (#275) handed to register_routes(). Defaults
+  // preserve the historical compile-time constants; a subclass may set this
+  // (e.g. from RouteLimits::from_env() after setenv) in its own constructor.
+  RouteLimits limits_{};
+
   void SetUp() override {
     store_ = std::make_unique<Store>();
     nats_ = std::make_unique<NatsClient>(nats_url_);
@@ -60,9 +65,11 @@ class RouteTestFixture : public ::testing::Test {
     if (bind_before_register_routes_) {
       port_ = server_->bind_to_any_port("127.0.0.1");
       ASSERT_GT(port_, 0) << "bind_to_any_port failed";
-      register_routes(*server_, *store_, *nats_, *rate_limiter_, *auth_, *metrics_, *orchestrator_);
+      register_routes(*server_, *store_, *nats_, *rate_limiter_, *auth_, *metrics_, *orchestrator_,
+                      limits_);
     } else {
-      register_routes(*server_, *store_, *nats_, *rate_limiter_, *auth_, *metrics_, *orchestrator_);
+      register_routes(*server_, *store_, *nats_, *rate_limiter_, *auth_, *metrics_, *orchestrator_,
+                      limits_);
       port_ = server_->bind_to_any_port("127.0.0.1");
       ASSERT_GT(port_, 0) << "bind_to_any_port failed";
     }
