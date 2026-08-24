@@ -28,8 +28,10 @@ foreach(_line IN LISTS _lines)
   endif()
 endforeach()
 
+# -std=c++17 (not c++20): older clang-tidy releases reject the c++20 spelling;
+# it is sufficient for the headers this TU exercises.
 execute_process(
-  COMMAND ${CLANG_TIDY_CMD} ${_extras} -- -std=c++20 ${TU}
+  COMMAND ${CLANG_TIDY_CMD} ${_extras} ${TU} -- -std=c++17
   RESULT_VARIABLE _rc
   OUTPUT_VARIABLE _out
   ERROR_VARIABLE _err)

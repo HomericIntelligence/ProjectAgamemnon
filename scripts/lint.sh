@@ -5,13 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/debug"
 
-# Match the justfile `build` recipe's compiler overrides so lint exercises the
-# same toolchain as build. Configure failures abort under set -e rather than
-# being silently swallowed: linting against a stale configure cache hides
-# breakage.
-cmake --preset debug \
-  -DCMAKE_C_COMPILER=/usr/bin/gcc \
-  -DCMAKE_CXX_COMPILER=/usr/bin/c++
+# Do not hardcode a compiler: lint must exercise the same toolchain the
+# developer's build configured. If AGAMEMNON_LINT_C_COMPILER /
+# AGAMEMNON_LINT_CXX_COMPILER are explicitly set, forward them; otherwise run
+# plain `cmake --preset debug` and let CMake reuse whatever compiler is already
+# recorded in build/debug/CMakeCache.txt (or its default). Configure failures
+# abort under set -e rather than being silently swallowed: linting against a
+# stale configure cache hides breakage.
+CMAKE_COMPILER_ARGS=()
+if [ -n "${AGAMEMNON_LINT_C_COMPILER:-}" ]; then
+  CMAKE_COMPILER_ARGS+=("-DCMAKE_C_COMPILER=${AGAMEMNON_LINT_C_COMPILER}")
+fi
+if [ -n "${AGAMEMNON_LINT_CXX_COMPILER:-}" ]; then
+  CMAKE_COMPILER_ARGS+=("-DCMAKE_CXX_COMPILER=${AGAMEMNON_LINT_CXX_COMPILER}")
+fi
+cmake --preset debug "${CMAKE_COMPILER_ARGS[@]}"
 
 if [ ! -f "${BUILD_DIR}/compile_commands.json" ]; then
   echo "error: ${BUILD_DIR}/compile_commands.json not found; cannot run clang-tidy" >&2
