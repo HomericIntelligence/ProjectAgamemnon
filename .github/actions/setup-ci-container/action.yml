@@ -1,0 +1,36 @@
+name: "Set up CI container environment"
+description: >
+  Shared prelude for the release-pattern jobs in _required.yml: prunes stale
+  podman storage, restores the Conan (~/.conan2) Release cache and the podman
+  container-storage cache, and builds the agamemnon-ci:local image that the
+  in-container build/test/scan steps run in. Extracted so the cache keys live
+  in exactly one place (issue #241). Requires actions/checkout to have run
+  first (the podman build needs the workspace checkout).
+
+runs:
+  using: composite
+  steps:
+    - name: Prune stale podman storage (self-hosted disk pressure)
+      shell: bash
+      run: podman system prune -af --volumes=false || exit 0
+
+    - name: Restore Conan cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ~/.conan2
+        key: conan-${{ runner.os }}-release-${{ hashFiles('conanfile.py') }}
+        restore-keys: |
+          conan-${{ runner.os }}-release-
+          conan-${{ runner.os }}-
+
+    - name: Cache podman container storage
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ~/.local/share/containers/storage
+        key: podman-agamemnon-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+        restore-keys: |
+          podman-agamemnon-${{ runner.os }}-
+
+    - name: Build CI image (podman)
+      shell: bash
+      run: podman build -f ci/Containerfile -t agamemnon-ci:local .

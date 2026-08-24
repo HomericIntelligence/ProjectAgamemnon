@@ -2,10 +2,27 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-WORKFLOW_DIR = Path(__file__).parents[3] / ".github" / "workflows"
+GITHUB_DIR = Path(__file__).parents[3] / ".github"
+WORKFLOW_DIR = GITHUB_DIR / "workflows"
 WORKFLOW_PATH = WORKFLOW_DIR / "_required.yml"
+SETUP_CI_CONTAINER_ACTION_PATH = (
+    GITHUB_DIR / "actions" / "setup-ci-container" / "action.yml"
+)
+# Jobs sharing the byte-identical release prelude (Conan Release cache +
+# podman container-storage cache + CI image build) unified into the
+# setup-ci-container composite action.
+RELEASE_PRELUDE_JOBS = (
+    "unit-tests",
+    "integration-tests",
+    "security-dependency-scan",
+    "build",
+    "package",
+    "install",
+)
+CONAN_RELEASE_KEY_PREFIX = "conan-${{ runner.os }}-release-"
 
 REQUIRED_WORKFLOWS = ("_required.yml", "build-test.yml", "static-analysis.yml")
 SMOKE_WORKFLOW = "merge-queue-smoke.yml"
@@ -153,4 +170,101 @@ def test_gitleaks_sarif_upload_step_not_affected() -> None:
     assert "always()" in condition, (
         "Upload Gitleaks SARIF step lost its 'always()' condition — "
         "SARIF reports will not be uploaded when the scan fails"
+    )
+
+
+def _load_composite_action() -> dict:
+    """Load the setup-ci-container composite action as a parsed YAML dict."""
+    return yaml.safe_load(SETUP_CI_CONTAINER_ACTION_PATH.read_text())
+
+
+def test_release_cache_keys_live_only_in_composite_action() -> None:
+    """The duplicated conan-release cache key must not remain in _required.yml.
+
+    Issue #241: the key is now declared exactly once, inside the
+    setup-ci-container composite action.
+    """
+    workflow_text = WORKFLOW_PATH.read_text()
+    assert CONAN_RELEASE_KEY_PREFIX not in workflow_text, (
+        "conan release cache key reappeared inline in _required.yml — "
+        "it must live only in .github/actions/setup-ci-container/action.yml"
+    )
+    action = _load_composite_action()
+    action_text = SETUP_CI_CONTAINER_ACTION_PATH.read_text()
+    assert action["runs"]["using"] == "composite"
+    assert action_text.count(f"key: {CONAN_RELEASE_KEY_PREFIX}") == 1
+
+
+def test_composite_action_restores_expected_caches_in_order() -> None:
+    """The composite action must keep the exact pre-existing step sequence.
+
+    Byte-for-byte key parity with the pre-refactor jobs (plan Decision 6):
+    existing main-branch caches must keep hitting after the extraction.
+    """
+    steps = _load_composite_action()["runs"]["steps"]
+    names = [step["name"] for step in steps]
+    assert names == [
+        "Prune stale podman storage (self-hosted disk pressure)",
+        "Restore Conan cache",
+        "Cache podman container storage",
+        "Build CI image (podman)",
+    ]
+
+    conan = next(step for step in steps if step["name"] == "Restore Conan cache")
+    with_block = conan["with"]
+    assert with_block["path"] == "~/.conan2"
+    assert (
+        with_block["key"]
+        == "conan-${{ runner.os }}-release-${{ hashFiles('conanfile.py') }}"
+    )
+    assert with_block["restore-keys"] == (
+        "conan-${{ runner.os }}-release-\nconan-${{ runner.os }}-\n"
+    )
+
+    podman_cache = next(
+        step for step in steps if step["name"] == "Cache podman container storage"
+    )
+    assert podman_cache["with"]["path"] == "~/.local/share/containers/storage"
+    assert (
+        podman_cache["with"]["key"]
+        == "podman-agamemnon-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}"
+    )
+
+    image_build = next(
+        step for step in steps if step["name"] == "Build CI image (podman)"
+    )
+    assert image_build["run"].endswith("podman build -f ci/Containerfile -t agamemnon-ci:local .")
+
+
+@pytest.mark.parametrize("job_id", RELEASE_PRELUDE_JOBS)
+def test_release_prelude_jobs_use_the_composite_action(job_id: str) -> None:
+    """Every release-pattern job must call the shared composite action once,
+    after checkout (local actions resolve from the checked-out workspace)."""
+    workflow = _load_workflow()
+    steps = workflow["jobs"][job_id]["steps"]
+
+    uses_steps = [
+        step for step in steps if step.get("uses") == "./.github/actions/setup-ci-container"
+    ]
+    assert len(uses_steps) == 1, f"{job_id} must call the composite action exactly once"
+
+    action_index = steps.index(uses_steps[0])
+    assert steps[0].get("uses", "").startswith("actions/checkout@"), (
+        f"{job_id} must check out the repo before resolving the local composite action"
+    )
+    assert action_index > 0
+
+
+def test_lint_keeps_debug_conan_cache_inline() -> None:
+    """lint uses a Debug-scoped conan key and stays out of the unified action."""
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["lint"]["steps"]
+    assert all(
+        step.get("uses") != "./.github/actions/setup-ci-container" for step in steps
+    ), "lint must not use the release-scoped composite action"
+    conan_step = next(
+        step for step in steps if step.get("name") == "Restore Conan cache"
+    )
+    assert conan_step["with"]["key"].startswith(
+        "conan-${{ runner.os }}-debug-"
     )
