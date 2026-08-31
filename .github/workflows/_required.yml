@@ -31,6 +31,9 @@ jobs:
             conan-${{ runner.os }}-debug-
             conan-${{ runner.os }}-
 
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
+
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -263,6 +266,9 @@ jobs:
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
 
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
+
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -311,6 +317,9 @@ jobs:
           restore-keys: |
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
+
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
 
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -369,6 +378,9 @@ jobs:
           restore-keys: |
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
+
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
 
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -495,6 +507,9 @@ jobs:
           restore-keys: |
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
+
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
 
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -635,6 +650,9 @@ jobs:
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
 
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
+
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -731,6 +749,9 @@ jobs:
           restore-keys: |
             conan-${{ runner.os }}-release-
             conan-${{ runner.os }}-
+
+      - name: Prepare Conan cache directory
+        run: ./scripts/prepare-conan-cache.sh
 
       - name: Cache podman container storage
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
