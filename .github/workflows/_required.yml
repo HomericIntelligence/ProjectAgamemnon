@@ -76,7 +76,7 @@ jobs:
             bash -c '
               set -euo pipefail
               cd clients/python && uv sync --locked
-              uv run python -m pytest tests/test_ci_workflows.py -v
+              uv run python -m pytest tests/test_ci_workflows.py tests/test_pip_audit_policy.py -v
             '
 
   markdownlint:
