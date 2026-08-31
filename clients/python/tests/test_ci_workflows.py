@@ -1,11 +1,25 @@
 """Regression smoke tests for required CI workflow contracts."""
 
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
 
 WORKFLOW_DIR = Path(__file__).parents[3] / ".github" / "workflows"
 WORKFLOW_PATH = WORKFLOW_DIR / "_required.yml"
+REPO_ROOT = WORKFLOW_DIR.parents[1]
+CONAN_CACHE_BOOTSTRAP = REPO_ROOT / "scripts" / "prepare-conan-cache.sh"
+CONAN_CACHE_MOUNT = '-v "$HOME/.conan2:/home/ci/.conan2:Z"'
+CONAN_CACHE_JOBS = {
+    "lint",
+    "unit-tests",
+    "integration-tests",
+    "security-dependency-scan",
+    "build",
+    "package",
+    "install",
+}
 
 REQUIRED_WORKFLOWS = ("_required.yml", "build-test.yml", "static-analysis.yml")
 SMOKE_WORKFLOW = "merge-queue-smoke.yml"
@@ -37,6 +51,54 @@ def _workflow_triggers(workflow: dict) -> dict:
     return workflow.get("on", workflow.get(True, {}))
 
 
+def test_conan_cache_bootstrap_creates_a_cold_home(tmp_path: Path) -> None:
+    """The repository bootstrap must create the bind source on a cold runner."""
+    assert CONAN_CACHE_BOOTSTRAP.is_file()
+    assert os.access(CONAN_CACHE_BOOTSTRAP, os.X_OK)
+
+    home = tmp_path / "cold-runner-home"
+    home.mkdir()
+    cache = home / ".conan2"
+    assert not cache.exists()
+
+    subprocess.run(
+        [str(CONAN_CACHE_BOOTSTRAP)],
+        check=True,
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+    )
+
+    assert cache.is_dir()
+
+
+def test_every_conan_mount_is_preceded_by_the_repository_bootstrap() -> None:
+    """No required job may mount a cache directory that a cache miss left absent."""
+    workflow = _load_workflow()
+    mounted_jobs: set[str] = set()
+
+    for job_id, job in workflow["jobs"].items():
+        steps = job.get("steps", [])
+        mount_indexes = [
+            index
+            for index, step in enumerate(steps)
+            if CONAN_CACHE_MOUNT in str(step.get("run", ""))
+        ]
+        if not mount_indexes:
+            continue
+
+        mounted_jobs.add(job_id)
+        bootstrap_indexes = [
+            index
+            for index, step in enumerate(steps)
+            if step.get("run") == "./scripts/prepare-conan-cache.sh"
+        ]
+        assert bootstrap_indexes, f"{job_id} does not prepare the Conan cache"
+        assert any(index < min(mount_indexes) for index in bootstrap_indexes), (
+            f"{job_id} prepares the Conan cache only after mounting it"
+        )
+
+    assert mounted_jobs == CONAN_CACHE_JOBS
+
+
 def test_merge_group_runs_only_the_smoke_workflow() -> None:
     """The merge queue must run exactly one fast smoke job (one runner slot).
 
@@ -50,8 +112,7 @@ def test_merge_group_runs_only_the_smoke_workflow() -> None:
         assert triggers["push"]["branches"] == ["main"]
         assert triggers["pull_request"]["branches"] == ["main"]
         assert "merge_group" not in triggers, (
-            f"{filename} must not trigger on merge_group — merge-queue-smoke.yml "
-            "owns that event"
+            f"{filename} must not trigger on merge_group — merge-queue-smoke.yml owns that event"
         )
 
     smoke = _load_workflow(WORKFLOW_DIR / SMOKE_WORKFLOW)
